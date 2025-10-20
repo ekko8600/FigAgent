@@ -12,13 +12,39 @@ class DeepSeekClient:
             "Content-Type": "application/json"
         }
     
+    # def chat_completion(
+    #     self, 
+    #     messages: List[Dict[str, str]], 
+    #     model: str = "deepseek-chat",
+    #     temperature: float = 0.7,
+    #     max_tokens: int = 4000,
+    #     stream: bool = False
+    # ) -> str:
+    #     url = f"{self.base_url}/chat/completions"
+    #     payload = {
+    #         "model": model,
+    #         "messages": messages,
+    #         "temperature": temperature,
+    #         "max_tokens": max_tokens,
+    #         "stream": stream
+    #     }
+        
+    #     try:
+    #         response = requests.post(url, headers=self.headers, json=payload, timeout=60)
+    #         response.raise_for_status()
+    #         result = response.json()
+    #         return result['choices'][0]['message']['content']
+    #     except requests.exceptions.RequestException as e:
+    #         raise Exception(f"API请求失败: {str(e)}")
     def chat_completion(
         self, 
         messages: List[Dict[str, str]], 
         model: str = "deepseek-chat",
         temperature: float = 0.7,
         max_tokens: int = 4000,
-        stream: bool = False
+        stream: bool = False,
+        timeout: int = 600,  # 增加到120秒
+        max_retries: int = 2  # 添加重试机制
     ) -> str:
         url = f"{self.base_url}/chat/completions"
         payload = {
@@ -29,13 +55,32 @@ class DeepSeekClient:
             "stream": stream
         }
         
-        try:
-            response = requests.post(url, headers=self.headers, json=payload, timeout=60)
-            response.raise_for_status()
-            result = response.json()
-            return result['choices'][0]['message']['content']
-        except requests.exceptions.RequestException as e:
-            raise Exception(f"API请求失败: {str(e)}")
+        for attempt in range(max_retries):
+            try:
+                print(f"正在调用API... (尝试 {attempt + 1}/{max_retries})")
+                response = requests.post(
+                    url, 
+                    headers=self.headers, 
+                    json=payload, 
+                    timeout=timeout
+                )
+                response.raise_for_status()
+                result = response.json()
+                return result['choices'][0]['message']['content']
+                
+            except requests.exceptions.Timeout:
+                if attempt < max_retries - 1:
+                    print(f"请求超时，正在重试... ({attempt + 1}/{max_retries})")
+                    continue
+                else:
+                    raise Exception("API请求超时，请检查网络连接或稍后重试")
+                    
+            except requests.exceptions.RequestException as e:
+                if attempt < max_retries - 1:
+                    print(f"请求失败，正在重试... ({attempt + 1}/{max_retries}): {str(e)}")
+                    continue
+                else:
+                    raise Exception(f"API请求失败: {str(e)}")
     
     def generate_visualization_code(
         self, 
